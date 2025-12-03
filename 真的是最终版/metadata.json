@@ -1,7 +1,0 @@
-{
-  "name": "RetailAIM",
-  "description": "An interactive, iPad-first dashboard demonstrating O2O operations, supply chain intelligence, and AI-driven workforce training capabilities.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
-}
