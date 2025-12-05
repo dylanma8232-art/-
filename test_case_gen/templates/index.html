@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 测试用例生成工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        /* Custom spinner */
+        .loader {
+            border-top-color: #3498db;
+            -webkit-animation: spinner 1.5s linear infinite;
+            animation: spinner 1.5s linear infinite;
+        }
+        @-webkit-keyframes spinner {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800">
+    {% raw %}
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
+                <h1 class="text-2xl font-bold text-indigo-600 tracking-tight">AI Test Case Generator</h1>
+                <div class="text-sm text-gray-500">Powered by Qwen</div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow container mx-auto px-4 py-8 max-w-4xl">
+            
+            <div class="bg-white rounded-xl shadow-lg p-6 md:p-10">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-semibold text-gray-700">生成测试用例</h2>
+                    <button @click="openAdmin" class="text-gray-300 hover:text-yellow-500 transition-colors" title="Admin">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Input Type Tabs -->
+                <div class="flex space-x-4 mb-6 border-b border-gray-200">
+                    <button 
+                        @click="inputType = 'file'" 
+                        :class="{'border-indigo-500 text-indigo-600': inputType === 'file', 'border-transparent text-gray-500 hover:text-gray-700': inputType !== 'file'}"
+                        class="py-2 px-4 border-b-2 font-medium text-sm focus:outline-none transition-colors">
+                        上传文档 (.docx, .md, .txt)
+                    </button>
+                    <button 
+                        @click="inputType = 'url'" 
+                        :class="{'border-indigo-500 text-indigo-600': inputType === 'url', 'border-transparent text-gray-500 hover:text-gray-700': inputType !== 'url'}"
+                        class="py-2 px-4 border-b-2 font-medium text-sm focus:outline-none transition-colors">
+                        输入链接 (URL)
+                    </button>
+                </div>
+
+                <!-- File Upload -->
+                <div v-if="inputType === 'file'" class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">选择文件</label>
+                    <div class="flex items-center justify-center w-full">
+                        <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-48 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                <svg class="w-8 h-8 mb-4 text-gray-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
+                                </svg>
+                                <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">点击上传</span> 或拖拽文件</p>
+                                <p class="text-xs text-gray-500">DOCX, Markdown, TXT (最大 10MB)</p>
+                                <p v-if="file" class="mt-2 text-indigo-600 font-semibold">{{ file.name }}</p>
+                            </div>
+                            <input id="dropzone-file" type="file" class="hidden" @change="handleFileUpload" accept=".docx,.md,.txt" />
+                        </label>
+                    </div>
+                </div>
+
+                <!-- URL Input -->
+                <div v-if="inputType === 'url'" class="mb-6">
+                    <label for="url-input" class="block text-sm font-medium text-gray-700 mb-2">网页链接</label>
+                    <input type="url" id="url-input" v-model="url" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-2.5" placeholder="https://example.com/product-docs" required>
+                </div>
+
+                <!-- Action Button -->
+                <button 
+                    @click="generate" 
+                    :disabled="loading"
+                    class="w-full text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex justify-center items-center">
+                    <div v-if="loading" class="loader ease-linear rounded-full border-2 border-t-2 border-gray-200 h-5 w-5 mr-3"></div>
+                    <span v-if="loading">正在分析文档并生成用例...</span>
+                    <span v-else>开始生成</span>
+                </button>
+
+                <!-- Error Message -->
+                <div v-if="error" class="mt-4 p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50" role="alert">
+                    <span class="font-medium">错误!</span> {{ error }}
+                </div>
+
+                <!-- Results -->
+                <div v-if="result" class="mt-8 border-t border-gray-200 pt-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">生成成功!</h3>
+                        <a :href="result.download_url" class="text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            下载 Excel
+                        </a>
+                    </div>
+                    
+                    <!-- Preview Table -->
+                    <div class="overflow-x-auto shadow-md sm:rounded-lg">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">ID</th>
+                                    <th scope="col" class="px-6 py-3">Module</th>
+                                    <th scope="col" class="px-6 py-3">Test Item</th>
+                                    <th scope="col" class="px-6 py-3">Expected Result</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(item, index) in result.preview" :key="index" class="bg-white border-b hover:bg-gray-50">
+                                    <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">{{ item.ID }}</td>
+                                    <td class="px-6 py-4">{{ item.Module }}</td>
+                                    <td class="px-6 py-4">{{ item['Test Item'] }}</td>
+                                    <td class="px-6 py-4">{{ item['Expected Result'] }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div v-if="result.preview.length > 0" class="p-2 text-center text-xs text-gray-400 bg-gray-50">
+                            (仅显示前 5 条预览，完整内容请下载 Excel)
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white border-t border-gray-200 mt-8">
+            <div class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
+                <p class="text-gray-400 text-sm">&copy; 2025 Test Case Generator.</p>
+            </div>
+        </footer>
+
+        <!-- Admin Modal -->
+        <div v-if="showAdmin" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex justify-center items-center">
+            <div class="relative p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">系统设置</h3>
+                    <button @click="showAdmin = false" class="text-gray-400 hover:text-gray-500">
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+
+                <!-- Login Form -->
+                <div v-if="!isAdminLoggedIn">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="password">
+                            陛下请输入密码
+                        </label>
+                        <input v-model="adminPassword" type="password" id="password" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" placeholder="******">
+                    </div>
+                    <button @click="loginAdmin" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full">
+                        验证
+                    </button>
+                </div>
+
+                <!-- Config Form -->
+                <div v-else>
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            选择模型
+                        </label>
+                        <select v-model="config.model" class="block appearance-none w-full bg-white border border-gray-400 hover:border-gray-500 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline">
+                            <option value="qwen-plus">qwen-plus</option>
+                            <option value="qwen-max">qwen-max</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            系统提示词 (System Prompt)
+                        </label>
+                        <textarea v-model="config.system_prompt" rows="10" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline text-sm"></textarea>
+                    </div>
+                    <div class="flex items-center justify-end">
+                        <button @click="saveConfig" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                            保存设置
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    {% endraw %}
+
+    <script>
+        const { createApp, ref } = Vue
+
+        createApp({
+            setup() {
+                const inputType = ref('file')
+                const file = ref(null)
+                const url = ref('')
+                const loading = ref(false)
+                const result = ref(null)
+                const error = ref(null)
+                
+                const showAdmin = ref(false)
+                const isAdminLoggedIn = ref(false)
+                const adminPassword = ref('')
+                const config = ref({
+                    model: 'qwen-plus',
+                    system_prompt: ''
+                })
+
+                const handleFileUpload = (event) => {
+                    file.value = event.target.files[0]
+                }
+
+                const generate = async () => {
+                    loading.value = true
+                    error.value = null
+                    result.value = null
+                    
+                    const formData = new FormData()
+                    formData.append('inputType', inputType.value)
+                    
+                    if (inputType.value === 'file') {
+                        if (!file.value) {
+                            error.value = "请选择文件"
+                            loading.value = false
+                            return
+                        }
+                        formData.append('file', file.value)
+                    } else {
+                        if (!url.value) {
+                            error.value = "请输入链接"
+                            loading.value = false
+                            return
+                        }
+                        formData.append('url', url.value)
+                    }
+
+                    try {
+                        const response = await axios.post('/api/generate', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            }
+                        })
+                        result.value = response.data
+                    } catch (err) {
+                        error.value = err.response?.data?.error || "请求失败，请检查后台日志或API Key设置"
+                        console.error(err)
+                    } finally {
+                        loading.value = false
+                    }
+                }
+
+                const openAdmin = () => {
+                    showAdmin.value = true
+                }
+
+                const loginAdmin = async () => {
+                    try {
+                        const res = await axios.post('/api/admin/login', { password: adminPassword.value })
+                        if (res.data.success) {
+                            isAdminLoggedIn.value = true
+                            fetchConfig()
+                        }
+                    } catch (err) {
+                        alert("密码错误")
+                    }
+                }
+
+                const fetchConfig = async () => {
+                    try {
+                        const res = await axios.get('/api/config', {
+                            headers: { 'X-Admin-Password': adminPassword.value }
+                        })
+                        config.value = res.data
+                    } catch (err) {
+                        console.error(err)
+                    }
+                }
+
+                const saveConfig = async () => {
+                    try {
+                        await axios.post('/api/config', config.value, {
+                            headers: { 'X-Admin-Password': adminPassword.value }
+                        })
+                        alert("设置已保存")
+                        showAdmin.value = false
+                    } catch (err) {
+                        alert("保存失败")
+                    }
+                }
+
+                return {
+                    inputType,
+                    file,
+                    url,
+                    loading,
+                    result,
+                    error,
+                    handleFileUpload,
+                    generate,
+                    showAdmin,
+                    isAdminLoggedIn,
+                    adminPassword,
+                    config,
+                    openAdmin,
+                    loginAdmin,
+                    saveConfig
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
