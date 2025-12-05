@@ -1,7 +1,0 @@
-flask
-python-docx
-pandas
-openpyxl
-requests
-beautifulsoup4
-openai
